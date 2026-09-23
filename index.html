@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>韶乐园校园地图导览系统 - 坐标校准版</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        #app-container { display: flex; width: 100vw; height: 100vh; }
+
+        /* 左侧控制面板 */
+        #sidebar {
+            width: 340px;
+            background-color: #fff;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            overflow-y: auto;
+        }
+        .panel-header {
+            background-color: #0056b3;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+        }
+        .panel-header h1 { font-size: 20px; font-weight: 600; }
+        .panel-header p { font-size: 12px; opacity: 0.8; margin-top: 5px; }
+        .panel-body {
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-group label { font-size: 14px; font-weight: bold; color: #555; }
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+        select:focus { border-color: #0056b3; }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+            user-select: text;
+        }
+        input[type="text"]:focus { border-color: #0056b3; }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #0056b3;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #004494; }
+        button:active { transform: scale(0.98); }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        button.success { background-color: #28a745; }
+        button.success:hover { background-color: #218838; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+
+        /* 按钮组（两列布局） */
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row button { flex: 1; padding: 10px; font-size: 13px; }
+
+        .tips {
+            margin-top: auto;
+            font-size: 12px;
+            color: #888;
+            line-height: 1.6;
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #0056b3;
+        }
+        .divider { height: 1px; background: #e0e0e0; margin: 5px 0; }
+        .dev-panel {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px;
+            background: #fff8e1;
+            border: 1px solid #ffeeba;
+            border-radius: 6px;
+        }
+        .dev-panel.active { display: flex; }
+        .dev-panel h3 { font-size: 14px; color: #856404; margin-bottom: 5px; }
+        .dev-panel p { font-size: 12px; color: #856404; line-height: 1.5; }
+
+        /* 新增坐标表单 */
+        .add-form {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            background: #eef5ff;
+            border: 1px solid #cfe1ff;
+            border-radius: 6px;
+        }
+        .add-form.active { display: flex; }
+        .add-form .control-group label { font-size: 12px; }
+
+        /* 校准面板内的状态提示（替代弹窗） */
+        .dev-status {
+            display: none;
+            font-size: 12px;
+            line-height: 1.5;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: #e7f3ff;
+            color: #0056b3;
+            border-left: 4px solid #0056b3;
+        }
+        .dev-status.warn { background: #fff4e5; color: #b26a00; border-left-color: #f39c12; }
+        .dev-status.success { background: #e8f8ee; color: #1e7e34; border-left-color: #28a745; }
+
+        /* 右侧地图区 */
+        #map-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #e5e5e5;
+            cursor: grab;
+        }
+        #map-wrapper:active { cursor: grabbing; }
+        #map-content { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+        #map-image {
+            display: block;
+            width: 8000px;
+            height: 5040px;
+            pointer-events: none;
+            max-width: none;
+        }
+
+        /* 标记点 */
+        .marker {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background-color: #e74c3c;
+            border: 4px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+            z-index: 5;
+        }
+        .marker:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+            background-color: #c0392b;
+            z-index: 6;
+        }
+        .marker.temp-marker {
+            background-color: #f39c12;
+            border-color: #fff;
+            animation: pulse 1.5s infinite;
+            z-index: 10;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(243, 156, 18, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0); }
+        }
+
+        /* 信息弹窗 */
+        #info-popup {
+            position: absolute;
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            min-width: 200px;
+            display: none;
+            z-index: 100;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+        }
+        #info-popup::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 8px 8px 0;
+            border-style: solid;
+            border-color: #fff transparent transparent transparent;
+        }
+        .popup-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 5px; }
+        .popup-zone {
+            font-size: 13px;
+            color: #666;
+            background: #f0f2f5;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .popup-close {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            font-size: 16px;
+            color: #aaa;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .popup-close:hover { color: #333; }
+
+        /* 缩放指示器 */
+        #zoom-indicator {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            z-index: 200;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <aside id="sidebar">
+        <div class="panel-header">
+            <h1>韶乐园导览系统</h1>
+            <p>韶关学院（校本部）</p>
+        </div>
+        <div class="panel-body">
+            <!-- 常规模式 -->
+            <div id="normal-controls">
+                <div class="control-group">
+                    <label for="building-select">📍 选择目的地</label>
+                    <select id="building-select">
+                        <option value="">-- 请选择建筑或景观 --</option>
+                    </select>
+                </div>
+                <div class="btn-row">
+                    <button id="fit-btn">🔍 适应窗口</button>
+                    <button id="reset-btn">🔄 重置</button>
+                </div>
+            </div>
+
+            <!-- 开发者模式 -->
+            <div id="dev-controls" class="dev-panel">
+                <h3>🛠️ 坐标校准模式</h3>
+                <div class="control-group">
+                    <label for="dev-building-input">🎯 待绑定建筑（输入名称查找）</label>
+                    <input type="text" id="dev-building-input" list="dev-building-list"
+                           placeholder="输入关键字查找建筑…" autocomplete="off">
+                    <datalist id="dev-building-list"></datalist>
+                </div>
+                <div class="control-group">
+                    <label for="dev-name-input">✏️ 建筑名称（可直接修改）</label>
+                    <input type="text" id="dev-name-input" placeholder="选中建筑后可在此修改名称" disabled>
+                </div>
+                <div class="control-group">
+                    <label for="dev-zone-select">🗺️ 所属分区（可直接修改）</label>
+                    <select id="dev-zone-select" disabled>
+                        <option value="善美区">善美区</option>
+                        <option value="明德区">明德区</option>
+                        <option value="知行区">知行区</option>
+                        <option value="思源区">思源区</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="dev-type-select">🏷️ 建筑类型（可直接修改）</label>
+                    <select id="dev-type-select" disabled>
+                        <option value="教学楼">教学楼</option>
+                        <option value="宿舍">宿舍</option>
+                        <option value="食堂">食堂</option>
+                        <option value="公寓">公寓</option>
+                        <option value="公寓群">公寓群</option>
+                        <option value="体育建筑">体育建筑</option>
+                        <option value="广场">广场</option>
+                        <option value="湖泊">湖泊</option>
+                        <option value="建筑">建筑</option>
+                    </select>
+                </div>
+                <p>
+                    步骤：<br>
+                    1. 上方输入框查找并选中要校准的建筑<br>
+                    2. 点击地图上该建筑的精确中心（即时生效）<br>
+                    3. 名称、所属分区、建筑类型均可直接编辑<br>
+                    <strong>提示：</strong>点击空白处可拖拽，滚轮可缩放。
+                </p>
+                <div id="dev-status" class="dev-status"></div>
+                <div class="divider"></div>
+                <div class="btn-row">
+                    <button id="add-coord-btn" class="success">➕ 新增坐标</button>
+                    <button id="del-coord-btn" class="danger">🗑️ 删除坐标</button>
+                </div>
+
+                <!-- 新增坐标表单（默认隐藏，点击“新增坐标”后展开） -->
+                <div id="add-coord-form" class="add-form">
+                    <div class="control-group">
+                        <label for="new-name">名称</label>
+                        <input type="text" id="new-name" placeholder="如：图书馆">
+                    </div>
+                    <div class="control-group">
+                        <label for="new-zone">所属分区</label>
+                        <select id="new-zone">
+                            <option value="善美区">善美区</option>
+                            <option value="明德区">明德区</option>
+                            <option value="知行区">知行区</option>
+                            <option value="思源区">思源区</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="new-type">建筑类型</label>
+                        <select id="new-type">
+                            <option value="教学楼">教学楼</option>
+                            <option value="宿舍">宿舍</option>
+                            <option value="食堂">食堂</option>
+                            <option value="公寓">公寓</option>
+                            <option value="公寓群">公寓群</option>
+                            <option value="体育建筑">体育建筑</option>
+                            <option value="广场">广场</option>
+                            <option value="湖泊">湖泊</option>
+                            <option value="建筑">建筑</option>
+                        </select>
+                    </div>
+                    <div class="btn-row">
+                        <button id="confirm-new-btn" class="success">✅ 确定</button>
+                        <button id="cancel-new-btn" class="secondary">取消</button>
+                    </div>
+                </div>
+
+                <button id="copy-data-btn" class="success">📋 复制全部坐标数据</button>
+                <button id="exit-dev-btn" class="danger">❌ 退出校准模式</button>
+            </div>
+
+            <div class="divider"></div>
+            <button id="toggle-dev-btn" class="secondary">🛠️ 开启坐标校准</button>
+
+            <div class="tips">
+                <strong>操作提示：</strong><br>
+                • 滚轮缩放地图（5% - 200%）<br>
+                • 按住鼠标左键拖拽平移<br>
+                • 点击红色标记查看详情<br>
+                • 点击“适应窗口”可查看全貌
+            </div>
+        </div>
+    </aside>
+
+    <main id="map-wrapper">
+        <div id="map-content">
+            <img id="map-image" src="map.jpg" alt="韶乐园地图" onerror="this.src='https://via.placeholder.com/8000x5040?text=请将地图图片命名为map.jpg放在同级目录下'">
+        </div>
+        <div id="info-popup">
+            <span class="popup-close" id="popup-close">×</span>
+            <div class="popup-title" id="popup-title">建筑名称</div>
+            <div class="popup-zone" id="popup-zone">所属分区</div>
+        </div>
+        <div id="zoom-indicator">缩放: 100%</div>
+    </main>
+</div>
+
+<script>
+/**
+ * ==========================================================================
+ * 数据层
+ * ==========================================================================
+ */
+const GRID_CONFIG = {
+    cols: 200, rows: 126,
+    imgWidth: 8000, imgHeight: 5040,
+    cellW: 8000 / 200,
+    cellH: 5040 / 126
+};
+
+let buildingsData = [
+    { id: "AB03", name: "体育馆（善美区）", zone: "知行区", type: "体育建筑", center: { x: 39, y: 61 } },
+    { id: "AB10", name: "育德楼", zone: "明德区", type: "教学楼", center: { x: 67, y: 55 } },
+    { id: "AB11", name: "美育楼", zone: "明德区", type: "教学楼", center: { x: 55, y: 60 } },
+    { id: "AB12", name: "文德楼", zone: "明德区", type: "教学楼", center: { x: 53, y: 66 } },
+    { id: "AB13", name: "修德楼", zone: "明德区", type: "教学楼", center: { x: 64, y: 64 } },
+    { id: "AB14", name: "才德楼", zone: "明德区", type: "教学楼", center: { x: 56, y: 73 } },
+    { id: "AB15", name: "敏思楼", zone: "思源区", type: "教学楼", center: { x: 134, y: 51 } },
+    { id: "AB16", name: "勤学楼", zone: "明德区", type: "教学楼", center: { x: 60, y: 60 } },
+    { id: "AB17", name: "明德楼", zone: "明德区", type: "教学楼", center: { x: 101, y: 79 } },
+    { id: "AB18", name: "立德楼", zone: "善美区", type: "教学楼", center: { x: 96, y: 102 } },
+    { id: "AB19", name: "行德楼", zone: "善美区", type: "教学楼", center: { x: 87, y: 108 } },
+    { id: "AB20", name: "音乐厅", zone: "善美区", type: "建筑", center: { x: 103, y: 112 } },
+    { id: "AB22", name: "综合楼", zone: "善美区", type: "建筑", center: { x: 135, y: 90 } },
+    { id: "AB26", name: "善思楼", zone: "思源区", type: "教学楼", center: { x: 121, y: 50 } },
+    { id: "AB28", name: "思创楼", zone: "思源区", type: "教学楼", center: { x: 180, y: 30 } },
+    { id: "AB30", name: "味园", zone: "思源区", type: "食堂", center: { x: 167, y: 59 } },
+    { id: "AB33", name: "慎思楼", zone: "思源区", type: "教学楼", center: { x: 190, y: 47 } },
+    { id: "RB01", name: "景行苑教师公寓群", zone: "知行区", type: "公寓群", center: { x: 31, y: 35 } },
+    { id: "RB02", name: "樱花苑", zone: "知行区", type: "宿舍", center: { x: 19, y: 74 } },
+    { id: "RB03", name: "知书楼", zone: "知行区", type: "宿舍", center: { x: 30, y: 76 } },
+    { id: "RB04", name: "梧桐苑", zone: "知行区", type: "宿舍", center: { x: 19, y: 81 } },
+    { id: "RB05", name: "金竹苑", zone: "知行区", type: "宿舍", center: { x: 18, y: 90 } },
+    { id: "RB07", name: "芙蓉苑", zone: "明德区", type: "宿舍", center: { x: 64, y: 88 } },
+    { id: "RB08", name: "蔷薇苑", zone: "明德区", type: "宿舍", center: { x: 72, y: 93 } },
+    { id: "RB09", name: "秋枫苑", zone: "善美区", type: "宿舍", center: { x: 61, y: 102 } },
+    { id: "RB10", name: "海棠苑", zone: "善美区", type: "宿舍", center: { x: 70, y: 102 } },
+    { id: "RB11", name: "桂香苑", zone: "善美区", type: "宿舍", center: { x: 63, y: 113 } },
+    { id: "RB13", name: "紫竹苑（右）", zone: "善美区", type: "宿舍", center: { x: 143, y: 91 } },
+    { id: "RB14", name: "丹桂苑", zone: "善美区", type: "宿舍", center: { x: 152, y: 100 } },
+    { id: "RB15", name: "碧桂苑", zone: "善美区", type: "宿舍", center: { x: 157, y: 111 } },
+    { id: "RB16", name: "清园", zone: "善美区", type: "宿舍", center: { x: 180, y: 90 } },
+    { id: "RB20", name: "教师公寓（思源区）", zone: "思源区", type: "公寓", center: { x: 166, y: 52 } },
+    { id: "L01", name: "伴月湾", zone: "知行区", type: "湖泊", center: { x: 24, y: 59 } },
+    { id: "L02", name: "方正湖", zone: "知行区", type: "湖泊", center: { x: 61, y: 40 } },
+    { id: "L03", name: "西湖", zone: "明德区", type: "湖泊", center: { x: 87, y: 79 } },
+    { id: "L04", name: "东湖", zone: "明德区", type: "湖泊", center: { x: 115, y: 80 } },
+    { id: "L05", name: "望湖", zone: "善美区", type: "湖泊", center: { x: 119, y: 100 } },
+    { id: "L06", name: "青年湖", zone: "思源区", type: "湖泊", center: { x: 181, y: 57 } },
+    { id: "L07", name: "道平广场", zone: "明德区", type: "广场", center: { x: 104, y: 63 } },
+    { id: "L08", name: "崇德广场", zone: "善美区", type: "广场", center: { x: 139, y: 73 } },
+    { id: "NEW01", name: "知礼楼", zone: "知行区", type: "宿舍", center: { x: 28, y: 84 } },
+    { id: "NEW02", name: "行知楼", zone: "知行区", type: "宿舍", center: { x: 38, y: 78 } },
+    { id: "NEW03", name: "知遇楼", zone: "知行区", type: "宿舍", center: { x: 37, y: 86 } }
+];
+
+const roadsData = [
+    { id: "R01", name: "大学路", grid_nodes: [[20, 15], [60, 30], [100, 40], [150, 55], [190, 60]] },
+    { id: "R02", name: "丹霞大道", grid_nodes: [[30, 60], [80, 75], [120, 80], [180, 85]] },
+    { id: "R03", name: "南岭大道", grid_nodes: [[35, 95], [45, 120], [60, 120]] }
+];
+
+/**
+ * ==========================================================================
+ * 核心逻辑层
+ * ==========================================================================
+ */
+const mapWrapper = document.getElementById('map-wrapper');
+const mapContent = document.getElementById('map-content');
+const mapImage = document.getElementById('map-image');
+const buildingSelect = document.getElementById('building-select');
+const devBuildingInput = document.getElementById('dev-building-input');
+const devBuildingList = document.getElementById('dev-building-list');
+const devNameInput = document.getElementById('dev-name-input');
+const devZoneSelect = document.getElementById('dev-zone-select');
+const devTypeSelect = document.getElementById('dev-type-select');
+const devStatus = document.getElementById('dev-status');
+const resetBtn = document.getElementById('reset-btn');
+const fitBtn = document.getElementById('fit-btn');
+const toggleDevBtn = document.getElementById('toggle-dev-btn');
+const exitDevBtn = document.getElementById('exit-dev-btn');
+const copyDataBtn = document.getElementById('copy-data-btn');
+const addCoordBtn = document.getElementById('add-coord-btn');
+const delCoordBtn = document.getElementById('del-coord-btn');
+const addCoordForm = document.getElementById('add-coord-form');
+const newNameInput = document.getElementById('new-name');
+const newZoneSelect = document.getElementById('new-zone');
+const newTypeSelect = document.getElementById('new-type');
+const confirmNewBtn = document.getElementById('confirm-new-btn');
+const cancelNewBtn = document.getElementById('cancel-new-btn');
+const normalControls = document.getElementById('normal-controls');
+const devControls = document.getElementById('dev-controls');
+const infoPopup = document.getElementById('info-popup');
+const popupTitle = document.getElementById('popup-title');
+const popupZone = document.getElementById('popup-zone');
+const popupClose = document.getElementById('popup-close');
+const zoomIndicator = document.getElementById('zoom-indicator');
+
+// 视图状态
+let currentScale = 1, currentTranslateX = 0, currentTranslateY = 0;
+let isDragging = false, startX = 0, startY = 0, startTranslateX = 0, startTranslateY = 0;
+let initialScale = 1, initialTranslateX = 0, initialTranslateY = 0;
+
+// **关键修正：最小缩放从 0.5 改为 0.05，适应 8000x5040 大图**
+const MIN_SCALE = 0.05, MAX_SCALE = 2.0;
+
+// 开发者模式
+let isDevMode = false;
+let devSelectedBuildingId = null;
+let tempMarker = null;
+let isAddingNew = false;        // 是否处于“新增坐标落点”状态
+let pendingNewBuilding = null;  // 待落点的新增建筑数据
+let pendingDeleteId = null;     // 二次点击确认删除的建筑 ID
+let statusTimer = null;         // 状态提示定时器
+
+/**
+ * 校准面板内的状态提示（替代 alert 弹窗）
+ */
+function showStatus(msg, type = 'info') {
+    devStatus.textContent = msg;
+    devStatus.className = 'dev-status' + (type === 'info' ? '' : ' ' + type);
+    devStatus.style.display = 'block';
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { devStatus.style.display = 'none'; }, 4000);
+}
+
+// 删除操作的二次确认提示
+function setDeleteConfirmMsg(name) {
+    showStatus(`再次点击「🗑️ 删除坐标」以确认删除【${name}】`, 'warn');
+}
+
+/**
+ * 网格 -> 像素
+ */
+function gridToPixel(gridX, gridY) {
+    return { px: gridX * GRID_CONFIG.cellW, py: gridY * GRID_CONFIG.cellH };
+}
+
+/**
+ * 像素 -> 屏幕
+ */
+function pixelToScreen(px, py) {
+    return { screenX: px * currentScale + currentTranslateX, screenY: py * currentScale + currentTranslateY };
+}
+
+/**
+ * 应用变换
+ */
+function applyTransform(useTransition = false) {
+    if (useTransition) {
+        mapContent.style.transition = 'transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)';
+    } else {
+        mapContent.style.transition = 'none';
+    }
+    mapContent.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${currentScale})`;
+    // 更新缩放指示器
+    zoomIndicator.textContent = `缩放: ${Math.round(currentScale * 100)}%`;
+}
+
+/**
+ * 适应窗口
+ */
+function fitToWindow() {
+    const wrapperWidth = mapWrapper.clientWidth;
+    const wrapperHeight = mapWrapper.clientHeight;
+    const scaleX = wrapperWidth / GRID_CONFIG.imgWidth;
+    const scaleY = wrapperHeight / GRID_CONFIG.imgHeight;
+    initialScale = Math.min(scaleX, scaleY);
+    currentScale = initialScale;
+    initialTranslateX = (wrapperWidth - GRID_CONFIG.imgWidth * initialScale) / 2;
+    initialTranslateY = (wrapperHeight - GRID_CONFIG.imgHeight * initialScale) / 2;
+    currentTranslateX = initialTranslateX;
+    currentTranslateY = initialTranslateY;
+    applyTransform(true);
+}
+
+/**
+ * 初始化视图
+ */
+function initMapView() {
+    fitToWindow();
+}
+
+/**
+ * 滚轮缩放（独立于所有模式，任何情况都可用）
+ */
+mapWrapper.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const rect = mapWrapper.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const mapX = (mouseX - currentTranslateX) / currentScale;
+    const mapY = (mouseY - currentTranslateY) / currentScale;
+
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    let newScale = currentScale * delta;
+    newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+    if (newScale === currentScale) return;
+
+    currentTranslateX = mouseX - mapX * newScale;
+    currentTranslateY = mouseY - mapY * newScale;
+    currentScale = newScale;
+
+    applyTransform(false);
+}, { passive: false });
+
+/**
+ * 拖拽平移（点标记点时不触发）
+ */
+mapWrapper.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    if (e.target.classList.contains('marker')) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startTranslateX = currentTranslateX;
+    startTranslateY = currentTranslateY;
+    mapWrapper.style.cursor = 'grabbing';
+    infoPopup.style.display = 'none';
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    currentTranslateX = startTranslateX + (e.clientX - startX);
+    currentTranslateY = startTranslateY + (e.clientY - startY);
+    applyTransform(false);
+});
+
+document.addEventListener('mouseup', function() {
+    if (isDragging) {
+        isDragging = false;
+        mapWrapper.style.cursor = isDevMode ? 'crosshair' : 'grab';
+    }
+});
+
+mapWrapper.addEventListener('mouseleave', function() {
+    if (isDragging) {
+        isDragging = false;
+        mapWrapper.style.cursor = isDevMode ? 'crosshair' : 'grab';
+    }
+});
+
+/**
+ * 点击拾取（开发者模式）与关闭弹窗
+ */
+let clickStartPos = { x: 0, y: 0 };
+mapWrapper.addEventListener('mousedown', function(e) {
+    clickStartPos = { x: e.clientX, y: e.clientY };
+});
+
+mapWrapper.addEventListener('click', function(e) {
+    // 区分拖拽与点击
+    const dx = Math.abs(e.clientX - clickStartPos.x);
+    const dy = Math.abs(e.clientY - clickStartPos.y);
+    if (dx > 5 || dy > 5) return;
+
+    if (!isDevMode) {
+        if (e.target === mapWrapper || e.target === mapContent || e.target === mapImage) {
+            infoPopup.style.display = 'none';
+        }
+        return;
+    }
+
+    // 新增坐标模式：点击地图直接落点创建
+    if (isAddingNew && pendingNewBuilding) {
+        if (e.target.classList.contains('marker')) return;
+
+        const rect = mapWrapper.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const mapX = (mouseX - currentTranslateX) / currentScale;
+        const mapY = (mouseY - currentTranslateY) / currentScale;
+
+        const gridX = Math.round(mapX / GRID_CONFIG.cellW);
+        const gridY = Math.round(mapY / GRID_CONFIG.cellH);
+
+        if (gridX < 0 || gridX > GRID_CONFIG.cols || gridY < 0 || gridY > GRID_CONFIG.rows) {
+            showStatus('点击位置超出地图范围，请重新点击！', 'warn');
+            return;
+        }
+
+        pendingNewBuilding.center = { x: gridX, y: gridY };
+        buildingsData.push(pendingNewBuilding);
+        const created = pendingNewBuilding;
+        isAddingNew = false;
+        pendingNewBuilding = null;
+        renderMarkers();
+        refreshSelectOptions();
+        selectDevBuilding(created);
+        showStatus(`✅ 已新增【${created.name}】，坐标 (${gridX}, ${gridY})。`, 'success');
+        return;
+    }
+
+    if (!devSelectedBuildingId) {
+        showStatus('请先在上方输入框中选择要校准的建筑！', 'warn');
+        return;
+    }
+    if (e.target.classList.contains('marker')) return;
+
+    const rect = mapWrapper.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const mapX = (mouseX - currentTranslateX) / currentScale;
+    const mapY = (mouseY - currentTranslateY) / currentScale;
+
+    // ★ 修改：坐标精度只保留整数（四舍五入取整）
+    const gridX = Math.round(mapX / GRID_CONFIG.cellW);
+    const gridY = Math.round(mapY / GRID_CONFIG.cellH);
+
+    if (gridX < 0 || gridX > GRID_CONFIG.cols || gridY < 0 || gridY > GRID_CONFIG.rows) {
+        showStatus('点击位置超出地图范围，请重新点击！', 'warn');
+        return;
+    }
+
+    const building = buildingsData.find(b => b.id === devSelectedBuildingId);
+    if (!building) return;
+
+    // 直接落点绑定（即时生效，无需弹窗确认）
+    if (tempMarker) tempMarker.remove();
+    tempMarker = document.createElement('div');
+    tempMarker.className = 'marker temp-marker';
+    tempMarker.style.left = (gridX * GRID_CONFIG.cellW) + 'px';
+    tempMarker.style.top = (gridY * GRID_CONFIG.cellH) + 'px';
+    mapContent.appendChild(tempMarker);
+
+    building.center = { x: gridX, y: gridY };
+    renderMarkers();
+    if (tempMarker) { tempMarker.remove(); tempMarker = null; }
+    showStatus(`✅ 【${building.name}】坐标已更新为 (${gridX}, ${gridY})。`, 'success');
+});
+
+/**
+ * 常规模式定位
+ */
+buildingSelect.addEventListener('change', function(e) {
+    const selectedId = e.target.value;
+    if (!selectedId) return;
+    locateBuilding(selectedId);
+});
+
+function locateBuilding(id) {
+    const building = buildingsData.find(b => b.id === id);
+    if (!building) return;
+    const centerPixel = gridToPixel(building.center.x, building.center.y);
+    const targetScale = 1.5;
+    const wrapperWidth = mapWrapper.clientWidth;
+    const wrapperHeight = mapWrapper.clientHeight;
+    currentScale = targetScale;
+    currentTranslateX = wrapperWidth / 2 - centerPixel.px * targetScale;
+    currentTranslateY = wrapperHeight / 2 - centerPixel.py * targetScale;
+    applyTransform(true);
+    setTimeout(() => showPopup(building, centerPixel.px, centerPixel.py), 500);
+}
+
+// 重置按钮（恢复到适应窗口的初始状态）
+resetBtn.addEventListener('click', function() {
+    if (!confirm('确定要将地图重置为初始视图吗？')) return;
+    fitToWindow();
+    infoPopup.style.display = 'none';
+    buildingSelect.value = '';
+});
+
+// 适应窗口按钮
+fitBtn.addEventListener('click', function() {
+    fitToWindow();
+    infoPopup.style.display = 'none';
+});
+
+/**
+ * 渲染标记
+ */
+function renderMarkers() {
+    const oldMarkers = mapContent.querySelectorAll('.marker');
+    oldMarkers.forEach(m => m.remove());
+
+    buildingsData.forEach(building => {
+        const centerPixel = gridToPixel(building.center.x, building.center.y);
+        const marker = document.createElement('div');
+        marker.className = 'marker';
+        marker.style.left = centerPixel.px + 'px';
+        marker.style.top = centerPixel.py + 'px';
+        marker.dataset.id = building.id;
+        marker.title = building.name;
+
+        marker.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (isDevMode) {
+                // 编辑模式下点击标记 = 选中该建筑
+                selectDevBuilding(building);
+                showStatus(`已选中【${building.name}】，当前坐标 X=${building.center.x}, Y=${building.center.y}。点击地图可更新。`);
+                return;
+            }
+            showPopup(building, centerPixel.px, centerPixel.py);
+        });
+
+        mapContent.appendChild(marker);
+    });
+}
+
+/**
+ * 弹窗
+ */
+function showPopup(building, px, py) {
+    const screenPos = pixelToScreen(px, py);
+    popupTitle.textContent = building.name;
+    popupZone.textContent = `所属区域：${building.zone} | 类型：${building.type || '建筑'}`;
+    infoPopup.style.display = 'block';
+    infoPopup.style.left = screenPos.screenX + 'px';
+    infoPopup.style.top = screenPos.screenY + 'px';
+
+    const popupRect = infoPopup.getBoundingClientRect();
+    const wrapperRect = mapWrapper.getBoundingClientRect();
+    let offsetX = 0, offsetY = 0;
+    if (popupRect.right > wrapperRect.right) offsetX = wrapperRect.right - popupRect.right;
+    if (popupRect.left < wrapperRect.left) offsetX = wrapperRect.left - popupRect.left;
+    if (popupRect.top < wrapperRect.top) offsetY = wrapperRect.top - popupRect.top;
+    if (offsetX !== 0 || offsetY !== 0) {
+        infoPopup.style.left = (screenPos.screenX + offsetX) + 'px';
+        infoPopup.style.top = (screenPos.screenY + offsetY) + 'px';
+    }
+}
+
+popupClose.addEventListener('click', function(e) {
+    e.stopPropagation();
+    infoPopup.style.display = 'none';
+});
+
+/**
+ * 重建下拉框与查找列表（新增/删除坐标、改名后需调用）
+ */
+function refreshSelectOptions() {
+    // 常规模式下拉框：清空除首个提示项外的所有子节点
+    while (buildingSelect.children.length > 1) buildingSelect.removeChild(buildingSelect.lastChild);
+
+    // 按分区生成分组
+    const zones = {};
+    buildingsData.forEach(b => {
+        if (!zones[b.zone]) zones[b.zone] = [];
+        zones[b.zone].push(b);
+    });
+    for (const [zoneName, buildings] of Object.entries(zones)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = zoneName;
+        buildings.forEach(b => {
+            const option = document.createElement('option');
+            option.value = b.id;
+            option.textContent = b.name;
+            optgroup.appendChild(option);
+        });
+        buildingSelect.appendChild(optgroup);
+    }
+
+    // 校准模式查找列表：使用 datalist 支持输入关键字过滤
+    devBuildingList.innerHTML = '';
+    buildingsData.forEach(b => {
+        const option = document.createElement('option');
+        option.value = b.name;                      // 输入框显示并用于过滤
+        option.label = `${b.zone} · ${b.type || '建筑'}`;
+        devBuildingList.appendChild(option);
+    });
+}
+
+/**
+ * 确保下拉框中存在指定选项（兼容预设之外的旧数据）
+ */
+function ensureOptionValue(selectEl, value) {
+    if (![...selectEl.options].some(o => o.value === value)) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        selectEl.appendChild(opt);
+    }
+}
+
+/**
+ * 选中某个建筑（同步查找框、名称/分区/类型编辑控件与内部状态）
+ */
+function selectDevBuilding(building) {
+    devSelectedBuildingId = building.id;
+    devBuildingInput.value = building.name;
+
+    devNameInput.value = building.name;
+    devNameInput.disabled = false;
+
+    ensureOptionValue(devZoneSelect, building.zone);
+    ensureOptionValue(devTypeSelect, building.type || '建筑');
+    devZoneSelect.value = building.zone;
+    devTypeSelect.value = building.type || '建筑';
+    devZoneSelect.disabled = false;
+    devTypeSelect.disabled = false;
+
+    pendingDeleteId = null;
+    addCoordForm.classList.remove('active');
+}
+
+/**
+ * 清空校准面板中的选中状态
+ */
+function clearDevSelection() {
+    devSelectedBuildingId = null;
+    devBuildingInput.value = '';
+    devNameInput.value = '';
+    devNameInput.disabled = true;
+    devZoneSelect.disabled = true;
+    devTypeSelect.disabled = true;
+    pendingDeleteId = null;
+}
+
+// 开发者模式切换
+toggleDevBtn.addEventListener('click', function() {
+    isDevMode = true;
+    normalControls.style.display = 'none';
+    devControls.classList.add('active');
+    toggleDevBtn.style.display = 'none';
+    mapWrapper.style.cursor = 'crosshair';
+    infoPopup.style.display = 'none';
+    clearDevSelection();
+    isAddingNew = false;
+    pendingNewBuilding = null;
+    addCoordForm.classList.remove('active');
+    showStatus('已进入坐标校准模式：输入名称查找建筑，点击地图即绑定坐标。');
+});
+
+exitDevBtn.addEventListener('click', function() {
+    isDevMode = false;
+    normalControls.style.display = 'block';
+    devControls.classList.remove('active');
+    toggleDevBtn.style.display = 'block';
+    mapWrapper.style.cursor = 'grab';
+    clearDevSelection();
+    isAddingNew = false;
+    pendingNewBuilding = null;
+    addCoordForm.classList.remove('active');
+    if (tempMarker) { tempMarker.remove(); tempMarker = null; }
+});
+
+// 查找框：输入或选中名称后自动匹配建筑
+devBuildingInput.addEventListener('input', function() {
+    const keyword = devBuildingInput.value.trim();
+    isAddingNew = false;
+    pendingNewBuilding = null;
+    if (tempMarker) { tempMarker.remove(); tempMarker = null; }
+
+    const building = buildingsData.find(b => b.name === keyword);
+    if (building) {
+        selectDevBuilding(building);
+        showStatus(`已选中【${building.name}】，点击地图设定坐标。`);
+    } else {
+        // 未精确匹配时仅清除选中状态，不打断输入
+        devSelectedBuildingId = null;
+        devNameInput.value = '';
+        devNameInput.disabled = true;
+        devZoneSelect.disabled = true;
+        devTypeSelect.disabled = true;
+        pendingDeleteId = null;
+    }
+});
+
+// 名称编辑框：直接修改当前建筑的名称
+devNameInput.addEventListener('change', function() {
+    if (!devSelectedBuildingId) return;
+    const building = buildingsData.find(b => b.id === devSelectedBuildingId);
+    if (!building) return;
+
+    const newName = devNameInput.value.trim();
+    if (!newName) {
+        devNameInput.value = building.name;   // 名称不可为空，回退
+        showStatus('名称不能为空。', 'warn');
+        return;
+    }
+    if (newName === building.name) return;
+
+    building.name = newName;
+    devBuildingInput.value = newName;
+    renderMarkers();
+    refreshSelectOptions();
+    showStatus(`✅ 已将建筑名称修改为【${newName}】。`, 'success');
+});
+
+// 分区编辑框：直接修改当前建筑所属分区
+devZoneSelect.addEventListener('change', function() {
+    if (!devSelectedBuildingId) return;
+    const building = buildingsData.find(b => b.id === devSelectedBuildingId);
+    if (!building) return;
+
+    building.zone = devZoneSelect.value;
+    refreshSelectOptions();
+    showStatus(`✅ 已将【${building.name}】的分区修改为【${building.zone}】。`, 'success');
+});
+
+// 类型编辑框：直接修改当前建筑类型
+devTypeSelect.addEventListener('change', function() {
+    if (!devSelectedBuildingId) return;
+    const building = buildingsData.find(b => b.id === devSelectedBuildingId);
+    if (!building) return;
+
+    building.type = devTypeSelect.value;
+    refreshSelectOptions();
+    showStatus(`✅ 已将【${building.name}】的类型修改为【${building.type}】。`, 'success');
+});
+
+// 新增坐标：展开表单，使用预设的分区/类型
+addCoordBtn.addEventListener('click', function() {
+    // 展开表单并重置
+    newNameInput.value = '';
+    newZoneSelect.value = '明德区';
+    newTypeSelect.value = '教学楼';
+    addCoordForm.classList.add('active');
+    newNameInput.focus();
+});
+
+// 取消新增
+cancelNewBtn.addEventListener('click', function() {
+    addCoordForm.classList.remove('active');
+});
+
+// 确认新增信息后，进入地图落点状态
+confirmNewBtn.addEventListener('click', function() {
+    const name = newNameInput.value.trim();
+    if (!name) {
+        showStatus('请输入新坐标的名称！', 'warn');
+        newNameInput.focus();
+        return;
+    }
+
+    // 生成唯一 ID（NEW01、NEW02 ...）
+    let seq = 1, newId;
+    do {
+        newId = 'NEW' + String(seq).padStart(2, '0');
+        seq++;
+    } while (buildingsData.some(b => b.id === newId));
+
+    pendingNewBuilding = {
+        id: newId,
+        name: name,
+        zone: newZoneSelect.value,   // 预设分区
+        type: newTypeSelect.value,   // 预设类型
+        center: { x: 0, y: 0 }
+    };
+    isAddingNew = true;
+    clearDevSelection();
+    if (tempMarker) { tempMarker.remove(); tempMarker = null; }
+    addCoordForm.classList.remove('active');
+    showStatus(`已进入新增模式，请点击地图上【${name}】的位置。`);
+});
+
+// 删除坐标：首次点击提示，二次点击确认删除（替代 confirm 弹窗）
+delCoordBtn.addEventListener('click', function() {
+    if (!devSelectedBuildingId) {
+        showStatus('请先在上方输入框中选择要删除的坐标！', 'warn');
+        return;
+    }
+    const index = buildingsData.findIndex(b => b.id === devSelectedBuildingId);
+    if (index === -1) return;
+    const building = buildingsData[index];
+
+    if (pendingDeleteId !== building.id) {
+        pendingDeleteId = building.id;
+        setDeleteConfirmMsg(building.name);
+        return;
+    }
+
+    buildingsData.splice(index, 1);
+    if (tempMarker) { tempMarker.remove(); tempMarker = null; }
+    renderMarkers();
+    refreshSelectOptions();
+    clearDevSelection();
+    showStatus(`🗑️ 已删除【${building.name}】。`, 'success');
+});
+
+copyDataBtn.addEventListener('click', function() {
+    const dataStr = JSON.stringify(buildingsData, null, 2);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(dataStr).then(() => {
+            showStatus('✅ 坐标数据已复制到剪贴板，可粘贴回 buildingsData。', 'success');
+        }).catch(() => fallbackCopy(dataStr));
+    } else {
+        fallbackCopy(dataStr);
+    }
+});
+
+function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        showStatus('✅ 坐标数据已复制到剪贴板。', 'success');
+    } catch (err) {
+        showStatus('复制失败，请手动复制控制台输出的数据。', 'warn');
+        console.log(text);
+    }
+    document.body.removeChild(textarea);
+}
+
+// 窗口自适应
+let resizeTimer;
+window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (Math.abs(currentScale - initialScale) < 0.01) {
+            initMapView();
+        }
+    }, 200);
+});
+
+// 初始化
+function init() {
+    refreshSelectOptions();
+    renderMarkers();
+    if (mapImage.complete) {
+        initMapView();
+    } else {
+        mapImage.addEventListener('load', initMapView);
+    }
+}
+
+init();
+</script>
+</body>
+</html>
